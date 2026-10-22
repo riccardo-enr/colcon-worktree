@@ -5,6 +5,8 @@ import sys
 
 import pytest
 
+from colcon_worktree.package_selection import owners
+
 GIT = [
     "git",
     "-c",
@@ -127,6 +129,49 @@ def test_flag_absent_is_inert(ws):
         check=True,
     )
     assert set(out.stdout.split()) == {"a", "b", "a_msgs"}
+
+
+@pytest.mark.parametrize(
+    "files, expected",
+    [
+        ([], set()),
+        (["src/a/file.cpp"], {"a", "alias"}),
+        (["src/a"], {"a", "alias", "nested"}),
+        (["src/a/nested/file.cpp"], {"a", "alias", "nested"}),
+        (["src"], {"a", "alias", "nested", "a_msgs"}),
+        (["src/a_msgs/file.msg"], {"a_msgs"}),
+        (["src/ab/file.cpp", "README.md"], set()),
+        (["src/a/file.cpp", "src/a/file.cpp", "src/a_msgs"],
+         {"a", "alias", "a_msgs"}),
+    ],
+)
+def test_owners_preserves_path_relationships(tmp_path, files, expected):
+    pkgs = {
+        "a": tmp_path / "src/a",
+        "alias": tmp_path / "src/a",
+        "nested": tmp_path / "src/a/nested",
+        "a_msgs": tmp_path / "src/a_msgs",
+    }
+    assert owners([tmp_path / f for f in files], pkgs) == expected
+
+
+def test_owners_matches_pairwise_reference():
+    paths = [Path(p) for p in (".", "src", "src/a", "src/ab", "src/a/b", "/src/a")]
+    pkgs = {str(i): path for i, path in enumerate(paths)}
+    for path in [*paths, Path("src/a/b/file"), Path("/src/a/file")]:
+        expected = {
+            name for name, root in pkgs.items()
+            if path.is_relative_to(root) or root.is_relative_to(path)
+        }
+        assert owners([path], pkgs) == expected
+    assert owners(paths, {}) == set()
+
+
+def test_new_untracked_package_selects_dependents(ws):
+    main, wt = ws
+    _pkg(wt, "new", "a")
+    _pkg(wt, "consumer", "new")
+    assert colcon_list(wt, underlay=main / "install") == {"new", "consumer"}
 
 
 if __name__ == "__main__":

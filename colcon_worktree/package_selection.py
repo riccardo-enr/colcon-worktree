@@ -1,3 +1,4 @@
+from collections import defaultdict
 import os
 from pathlib import Path
 import subprocess
@@ -51,13 +52,22 @@ def changed_files(top, base):
 
 
 def owners(files, pkgs):
-    # A changed path above a package is a submodule gitlink (or a dirty one).
-    return {
-        name
-        for name, p in pkgs.items()
-        for f in files
-        if f.is_relative_to(p) or p.is_relative_to(f)
-    }
+    if not files or not pkgs:
+        return set()
+    roots = defaultdict(set)
+    descendants = defaultdict(set)
+    for name, path in pkgs.items():
+        roots[path].add(name)
+        for parent in (path, *path.parents):
+            descendants[parent].add(name)
+
+    changed = set()
+    for path in files:
+        # A changed directory or gitlink selects every package below it.
+        changed.update(descendants.get(path, ()))
+        for parent in path.parents:
+            changed.update(roots.get(parent, ()))
+    return changed
 
 
 def underlay_sourced(main):
@@ -112,7 +122,7 @@ class WorktreePackageSelection(PackageSelectionExtensionPoint):
         deselected = False
         for d in decorators:
             name = d.descriptor.name
-            if name in changed or changed & set(d.recursive_dependencies):
+            if name in changed or not changed.isdisjoint(d.recursive_dependencies):
                 continue
             if d.selected:
                 logger.info(f"Skipping package '{name}' in '{d.descriptor.path}'")
