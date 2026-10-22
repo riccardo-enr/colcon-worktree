@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "colcon-worktree"
+version = "0.1.0"
+description = "colcon package selection for git worktrees: build only what changed since the main checkout's install"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["colcon-core>=0.12"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.entry-points."colcon_core.package_selection"]
+worktree = "colcon_worktree.package_selection:WorktreePackageSelection"
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+
+[tool.setuptools]
+packages = ["colcon_worktree"]
